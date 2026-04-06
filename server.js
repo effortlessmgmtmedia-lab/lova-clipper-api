@@ -9,7 +9,7 @@ const crypto = require('crypto');
 const exec = promisify(execFile);
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '500mb' }));
 
 const STORAGE = '/app/storage';
 const DOWNLOADS = path.join(STORAGE, 'downloads');
@@ -21,6 +21,33 @@ app.use('/clips', express.static(CLIPS));
 // Health check
 app.get('/', (req, res) => {
   res.json({ status: 'ok', service: 'Lova Clipper API' });
+});
+
+// Endpoint: clip from uploaded video or direct URL
+app.post('/api/clip-upload', async (req, res) => {
+  const { video_url, clips } = req.body;
+  // video_url = direct MP4 URL (not YouTube)
+  if (!video_url || !clips || !clips.length) {
+    return res.status(400).json({ error: 'Need video_url and clips array' });
+  }
+
+  const jobId = crypto.randomUUID().slice(0, 8);
+  const jobDir = path.join(CLIPS, jobId);
+  fs.mkdirSync(jobDir, { recursive: true });
+
+  try {
+    const videoPath = path.join(DOWNLOADS, `${jobId}.mp4`);
+    console.log(`[${jobId}] Downloading from URL: ${video_url}`);
+
+    // Download video from direct URL
+    await exec('curl', ['-L', '-o', videoPath, video_url], { timeout: 600000 });
+
+    // Process clips (same logic as /api/clip)
+    return processClips(jobId, videoPath, jobDir, clips, res);
+  } catch (err) {
+    console.error(`[${jobId}] Error:`, err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Main endpoint: generate clips from YouTube video
@@ -41,14 +68,14 @@ app.post('/api/clip', async (req, res) => {
     console.log(`[${jobId}] Downloading: ${youtube_url}`);
     const videoPath = path.join(DOWNLOADS, `${jobId}.mp4`);
 
+    const PROXY = process.env.PROXY_URL;
     await exec('yt-dlp', [
+      '--proxy', PROXY,
       '-f', 'best[height<=720]',
       '--no-playlist',
-      '--no-check-certificates',
-      '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       '-o', videoPath,
       youtube_url
-    ], { timeout: 600000 });
+    ], { timeout: 900000 });
 
     console.log(`[${jobId}] Downloaded. Processing ${clips.length} clips...`);
 
@@ -204,15 +231,15 @@ app.post('/api/transcribe', async (req, res) => {
   try {
     // Download audio only
     const audioPath = path.join(DOWNLOADS, `${jobId}.mp3`);
+    const PROXY = process.env.PROXY_URL;
     await exec('yt-dlp', [
+      '--proxy', PROXY,
       '-x', '--audio-format', 'mp3',
       '--audio-quality', '3',
-      '--no-check-certificates',
-      '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       '-o', audioPath,
       '--no-playlist',
       youtube_url
-    ], { timeout: 600000 });
+    ], { timeout: 900000 });
 
     // Transcribe with Whisper
     const audioFile = fs.createReadStream(audioPath);
