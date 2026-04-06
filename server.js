@@ -42,10 +42,11 @@ app.post('/api/clip', async (req, res) => {
     const videoPath = path.join(DOWNLOADS, `${jobId}.mp4`);
 
     await exec('yt-dlp', [
-      '-f', 'bestvideo[height<=1080]+bestaudio/best[height<=1080]',
-      '--merge-output-format', 'mp4',
-      '-o', videoPath,
+      '-f', 'best[height<=720]',
       '--no-playlist',
+      '--no-check-certificates',
+      '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      '-o', videoPath,
       youtube_url
     ], { timeout: 600000 });
 
@@ -206,6 +207,8 @@ app.post('/api/transcribe', async (req, res) => {
     await exec('yt-dlp', [
       '-x', '--audio-format', 'mp3',
       '--audio-quality', '3',
+      '--no-check-certificates',
+      '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       '-o', audioPath,
       '--no-playlist',
       youtube_url
